@@ -68,12 +68,11 @@ class CodeWriter(object):
     def __init__(self, file):
         self.outputfile = file
         self.line_count = 0
-        self.function_name = ''
+        self.function_name = 'null'
         self.return_count = 0
         
     def writeln(self, content):
-        #self.outputfile.write(content + '\n')
-        self.outputfile.write(content + ' // ' + str(self.line_count) + '\n')
+        self.outputfile.write(content + '\n')
         self.line_count += 1
 
     def setFileName(self, filename):
@@ -86,26 +85,31 @@ class CodeWriter(object):
         self.writeln('D=A')
         self.writeln('@SP')
         self.writeln('M=D')
-        self.writeln('@Sys.init')
-        self.writeln('0; JMP')
+        self.writeCall('Sys.init', 0)
    
-    def writeLabel(self, label):
+    def writeLabel(self, label=None):
+        if label:
+            label = self.function_name + '$' + label
+        else:
+            label = self.function_name
         self.writeln('(' + label + ')')
         self.line_count -= 1
         
     def writeIf(self, label):
+        label = self.function_name + '$' + label
         self.popD()
         self.writeln('@' + label)
         self.writeln('D; JNE')
         
     def writeGoto(self, label):
+        label = self.function_name + '$' + label
         self.writeln('@' + label)
         self.writeln('0; JMP')
     
     def writeFunction(self, func_name, nvars):
         self.function_name = func_name
         self.return_cnt = 0
-        self.writeLabel(func_name)
+        self.writeLabel()
         # D=0
         self.writeln('@0')
         self.writeln('D=A')
@@ -115,8 +119,8 @@ class CodeWriter(object):
     def writeCall(self, func_name, nargs):
         # push return address
         self.return_count += 1
-        label = self.function_name + '$ret.' + str(self.return_count)
-        self.writeln('@' + label)
+        label = 'ret.' + str(self.return_count)
+        self.writeln('@' + self.function_name + '$' + label)
         self.writeln('D=A')
         self.pushD()
         # push LCL, ARG, THIS, THAT
@@ -327,7 +331,6 @@ def main():
         writer.setFileName(inputfile)
         while parser.hasMoreCommands():
             writer.writeComments(parser.current_command)
-           # print(parser.current_command)
             ctype = parser.currentCommandType()
             if ctype == CType.C_ARITHMETIC:
                 writer.writeArithmetic(parser.arg1())
