@@ -28,7 +28,10 @@ class Parser(object):
                       'push': CType.C_PUSH, 'pop': CType.C_POP,
                       'label': CType.C_LABEL,
                       'if-goto': CType.C_IF,
-                      'goto': CType.C_GOTO}
+                      'goto': CType.C_GOTO,
+                      'function': CType.C_FUNCTION,
+                      'call': CType.C_CALL,
+                      'return': CType.C_RETURN}
     
     def __init__(self, file):
         self.file = file
@@ -57,7 +60,7 @@ class Parser(object):
         return self.cmd_list[1]
     
     def arg2(self):
-        return self.cmd_list[2]
+        return int(self.cmd_list[2])
 
 class CodeWriter(object):
     SEGMENT_TABLE = {'local': 'LCL', 'argument': 'ARG', 'this': 'THIS',
@@ -65,38 +68,114 @@ class CodeWriter(object):
     def __init__(self, file):
         self.outputfile = file
         self.line_count = 0
+        self.function_name = ''
+        self.return_count = 0
         
     def writeln(self, content):
-        self.outputfile.write(content + '\n')
+        #self.outputfile.write(content + '\n')
+        self.outputfile.write(content + ' // ' + str(self.line_count) + '\n')
         self.line_count += 1
 
     def setFileName(self, filename):
         filename = os.path.split(filename)[1]
         self.filename = '.'.join(filename.split('.')[:-1])
     
-    def writeInit(self, has_sys_init):
+    def writeInit(self):
         self.writeComments('Initialize')
         self.writeln('@256')
         self.writeln('D=A')
         self.writeln('@SP')
         self.writeln('M=D')
-        if has_sys_init:
-            raise NotImplementedError('function call not implemented')           
+        self.writeln('@Sys.init')
+        self.writeln('0; JMP')
    
     def writeLabel(self, label):
         self.writeln('(' + label + ')')
         self.line_count -= 1
         
     def writeIf(self, label):
-        self.writeln('@SP')
-        self.writeln('M=M-1')
-        self.writeln('A=M')
-        self.writeln('D=M')
+        self.popD()
         self.writeln('@' + label)
         self.writeln('D; JNE')
         
     def writeGoto(self, label):
         self.writeln('@' + label)
+        self.writeln('0; JMP')
+    
+    def writeFunction(self, func_name, nvars):
+        self.function_name = func_name
+        self.return_cnt = 0
+        self.writeLabel(func_name)
+        # D=0
+        self.writeln('@0')
+        self.writeln('D=A')
+        for _ in range(nvars):
+            self.pushD()
+            
+    def writeCall(self, func_name, nargs):
+        # push return address
+        self.return_count += 1
+        label = self.function_name + '$ret.' + str(self.return_count)
+        self.writeln('@' + label)
+        self.writeln('D=A')
+        self.pushD()
+        # push LCL, ARG, THIS, THAT
+        for saved in ['LCL', 'ARG', 'THIS', 'THAT']:
+            self.writeln('@' + saved)
+            self.writeln('D=M')
+            self.pushD()       
+        # ARG=SP-5-nargs
+        self.writeln('@SP')
+        self.writeln('D=M')
+        self.writeln('@5')
+        self.writeln('D=D-A')
+        self.writeln('@' + str(nargs))
+        self.writeln('D=D-A')
+        self.writeln('@ARG')
+        self.writeln('M=D')        
+        # LCL=SP
+        self.writeln('@SP')
+        self.writeln('D=M')
+        self.writeln('@LCL')
+        self.writeln('M=D')        
+        # go to function
+        self.writeln('@' + func_name)
+        self.writeln('0; JMP')       
+        # function return
+        self.writeLabel(label)
+    
+    def writeReturn(self):
+        # endframe = LCL
+        self.writeln('@LCL')
+        self.writeln('D=M')
+        self.writeln('@R13')  # R13=endframe
+        self.writeln('M=D')
+        self.writeln('@5')
+        self.writeln('D=D-A')
+        self.writeln('A=D')
+        self.writeln('D=M')
+        # returnattr = *(endframe-5)
+        self.writeln('@R14')  # R14=returnattr
+        self.writeln('M=D')
+        # *ARG = pop()
+        self.popD()
+        self.writeln('@ARG')
+        self.writeln('A=M')
+        self.writeln('M=D')
+        # SP = ARG + 1
+        self.writeln('D=A')
+        self.writeln('@SP')
+        self.writeln('M=D+1')
+        # restore LCL, ARG, THIS, THAT
+        for saved in ['THAT', 'THIS', 'ARG', 'LCL']:
+            self.writeln('@R13')
+            self.writeln('AM=M-1')
+            self.writeln('D=M')
+            self.writeln('@' + saved)
+            self.writeln('M=D')
+        # go to returnattr
+        self.writeln('@R14')
+        self.writeln('A=M')
         self.writeln('0; JMP')
     
     def writeArithmetic(self, cmd):
@@ -139,36 +218,36 @@ class CodeWriter(object):
             self.writeln('A=M-1')
             self.writeln('M=-1')
     
+    def popD(self):
+        self.writeln('@SP')
+        self.writeln('M=M-1')
+        self.writeln('A=M')
+        self.writeln('D=M')
+    
+    def pushD(self):
+        self.writeln('@SP')
+        self.writeln('A=M')
+        self.writeln('M=D')
+        self.writeln('@SP')
+        self.writeln('M=M+1')
+            
     def writePushPop(self, cmd, segment, index):
-        def pushD():
-            self.writeln('@SP')
-            self.writeln('A=M')
-            self.writeln('M=D')
-            self.writeln('@SP')
-            self.writeln('M=M+1')
-            
-        def popD():
-            self.writeln('@SP')
-            self.writeln('M=M-1')
-            self.writeln('A=M')
-            self.writeln('D=M')
-            
         seg_pt = self.SEGMENT_TABLE.get(segment, None)
         if cmd == CType.C_PUSH:
             if seg_pt:
                 self.writeln('@' + seg_pt)
                 self.writeln('D=M')
-                self.writeln('@' + index)
+                self.writeln('@' + str(index))
                 self.writeln('A=D+A')
                 self.writeln('D=M')             
             elif segment == 'constant':
-                self.writeln('@' + index)
+                self.writeln('@' + str(index))
                 self.writeln('D=A')
             elif segment == 'static':
-                self.writeln('@' + self.filename + '.' + index)
+                self.writeln('@' + self.filename + '.' + str(index))
                 self.writeln('D=M')
             elif segment == 'temp':
-                self.writeln('@' + str(5+int(index)))
+                self.writeln('@' + str(5+index))
                 self.writeln('D=M')
             else:  # segment == 'pointer'
                 if index == '0':
@@ -176,30 +255,30 @@ class CodeWriter(object):
                 else:
                     self.writeln('@THAT')
                 self.writeln('D=M')
-            pushD()
+            self.pushD()
         else:  # cmd == CType.C_POP
             if seg_pt:
-                self.writeln('@' + index)
+                self.writeln('@' + str(index))
                 self.writeln('D=A')
                 self.writeln('@' + seg_pt)
                 self.writeln('D=D+M')
                 self.writeln('@R13')
                 self.writeln('M=D')
-                popD()                
+                self.popD()                
                 self.writeln('@R13')
                 self.writeln('A=M')
                 self.writeln('M=D')
             elif segment == 'static':
-                popD()
-                self.writeln('@' + self.filename + '.' + index)
+                self.popD()
+                self.writeln('@' + self.filename + '.' + str(index))
                 self.writeln('M=D')
             elif segment == 'temp':
-                popD()
-                self.writeln('@' + str(5+int(index)))
+                self.popD()
+                self.writeln('@' + str(5+index))
                 self.writeln('M=D')
             else:  # segment == 'pointer'
-                popD()
-                if index == '0':
+                self.popD()
+                if index == 0:
                     self.writeln('@THIS')
                 else:
                     self.writeln('@THAT')
@@ -240,13 +319,15 @@ def main():
     out_f = open(outputfile, 'w')
     writer = CodeWriter(out_f)
     has_sys_init = any(['Sys.vm' in inputfile for inputfile in inputfiles])
-    writer.writeInit(has_sys_init)
+    if has_sys_init:
+        writer.writeInit()
     for inputfile in inputfiles:
         in_f = open(inputfile, 'r')
         parser = Parser(in_f)
         writer.setFileName(inputfile)
         while parser.hasMoreCommands():
             writer.writeComments(parser.current_command)
+           # print(parser.current_command)
             ctype = parser.currentCommandType()
             if ctype == CType.C_ARITHMETIC:
                 writer.writeArithmetic(parser.arg1())
@@ -258,6 +339,14 @@ def main():
                 writer.writeIf(parser.arg1())
             elif ctype == CType.C_GOTO:
                 writer.writeGoto(parser.arg1())
+            elif ctype == CType.C_FUNCTION:
+                writer.writeFunction(parser.arg1(), parser.arg2())
+            elif ctype == CType.C_CALL:
+                writer.writeCall(parser.arg1(), parser.arg2())
+            elif ctype == CType.C_RETURN:
+                writer.writeReturn()
+            else:
+                raise NotImplementedError('Command type not implemented!')  
             parser.advance()
         in_f.close()
     writer.Close()
