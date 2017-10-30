@@ -157,7 +157,7 @@ def main():
         print('Usage: %s filename/dirname'%sys.argv[0])
         sys.exit(1)
     inputpath = os.path.relpath(sys.argv[1])
-    # get a list of VM files to be parsed
+    # get a list of Jack files to be parsed
     inputfiles = ListJackFile(inputpath)
     for inputfile in inputfiles:
         outputfile =  '.'.join(inputfile.split('.')[:-1]) + 'T.xml'
