@@ -31,7 +31,7 @@ class Parser(object):
         self.advance()  # read first line or EOF       
     
     def hasMoreCommands(self):
-        return self.current_command
+        return bool(self.current_command)
                 
     def advance(self):
         self.current_command = self.file.readline()
