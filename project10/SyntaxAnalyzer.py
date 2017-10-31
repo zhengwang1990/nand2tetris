@@ -123,7 +123,7 @@ class Tokenizer(object):
                 self.current_type = TokenType.IDENTIFIER   
         
         if self.output:
-            label = TOKENTYPE_FORMAT[self.current_type]
+            label = self.tokenTypeStr()
             self.output.write(xmlLabel(label)+' ')
             if self.current_token in SPEICAL_XML_CHAR:
                 self.output.write(SPEICAL_XML_CHAR[self.current_token])
@@ -141,7 +141,135 @@ class Tokenizer(object):
     
     def tokenType(self):
         return self.current_type
+    
+    def tokenTypeStr(self):
+        return TOKENTYPE_FORMAT[self.current_type]
 
+class CompilationEngine(object):
+    def __init__(self, input_filename, output_filename):
+        self.tokenizer = Tokenizer(input_filename)
+        self.output = open(output_filename, 'w')
+        self.indent = 0
+    
+    def writeln(self, label, value=None, is_end=False):
+        if value:
+            self.output.write(xmlLabel(label, False, self.indent)+' ')
+            self.output.write(value)
+            self.output.write(' '+xmlLabel(label, True, 0))
+        else:
+            self.output.write(xmlLabel(label, is_end, self.indent))
+        self.output.write('\n')
+    
+    def writeToken(self, tokenType=None):
+        tokenType = tokenType or self.tokenizer.tokenTypeStr()
+        self.writeln(tokenType, self.tokenizer.currentToken())       
+        self.tokenizer.advance()
+        
+    def compileClass(self):
+        if self.tokenizer.currentToken() != 'class':
+            return False
+        
+        self.writeln('class', is_end=False)
+        self.indent += 2
+        # class keyword, class name, '{'
+        for _ in range(3):
+            self.writeToken()
+        # variable dec
+        self.compileClassVarDec()
+        # subroutines
+        while self.compileSubroutineDec():
+            pass
+        self.indent -= 2
+        self.writeln('class', is_end=False)
+        
+        return True
+        
+    def compileClassVarDec(self):
+        pass
+    
+    def compileSubroutineDec(self):
+        if self.tokenizer.currentToken() not in ['constructor', 'function',
+                                                 'method']:
+            return False
+        
+        self.writeln('subroutineDec', is_end=False)
+        self.indent += 2
+        # subroutine type, return type, subroutine name, '('
+        for _ in range(4):
+            self.writeToken()
+        self.compileParameterList()
+        # ')'
+        self.writeToken()
+        self.compileSubroutineBody()
+        self.indent -= 2
+        self.writeln('subroutineDec', is_end=True)
+        
+        return True    
+        
+    def compileParameterList(self):
+        self.writeln('parameterList', is_end=False)
+        self.indent += 2
+        while (self.tokenizer.tokenType() == TokenType.IDENTIFIER or 
+               self.tokenizer.tokenType() == TokenType.KEYWORD):
+            for _ in range(2):
+                self.writeToken()
+            if self.tokenizer.currentToken() == ',':
+                self.writeToken()
+        self.indent -= 2
+        self.writeln('parameterList', is_end=True)
+        return True
+        
+    def compileSubroutineBody(self):
+        self.writeln('subroutineBody', is_end=False)
+        self.indent += 2
+        # '{'
+        self.writeToken()
+        while self.compileVarDec():
+            pass
+        self.compileStatements()
+        self.indent -= 2
+        self.writeln('subroutineBody', is_end=True)
+        return True
+
+    def compileVarDec(self):
+        if self.tokenizer.currentToken() != 'var':
+            return False
+        
+        self.writeln('varDec', is_end=False)
+        self.indent += 2
+        # var
+        self.writeToken()
+        while (self.tokenizer.tokenType() == TokenType.IDENTIFIER or 
+               self.tokenizer.tokenType() == TokenType.KEYWORD):
+            self.writeToken()
+            if self.tokenizer.currentToken() == ',':
+                self.writeToken()
+        # ';'
+        self.writeToken()
+        self.indent -= 2
+        self.writeln('varDec', is_end=True)
+        return True
+
+    def compileStatements(self):
+        self.writeln('statements', is_end=False)
+        self.indent += 2
+        while (self.compileLet()):
+            pass
+        self.indent -= 2
+        self.writeln('statements', is_end=True)
+        return True
+    
+    def compileLet(self):
+        if self.tokenizer.currentToken() != 'let':
+            return False
+        # let, var
+        for _ in range(2):
+            self.writeToken()
+        if self.tokenizer.currentToken() == '[':
+            raise NotImplemented('Expression')
+        # '='
+        self.writeToken()
+    
 def ListJackFile(path):
     ret = []
     if os.path.isfile(path):
@@ -160,11 +288,17 @@ def main():
     inputpath = os.path.relpath(sys.argv[1])
     # get a list of Jack files to be parsed
     inputfiles = ListJackFile(inputpath)
+    
     for inputfile in inputfiles:
         outputfile =  '.'.join(inputfile.split('.')[:-1]) + 'T.xml'
         tokenizer = Tokenizer(inputfile, outputfile)
         while tokenizer.hasMoreTokens():
             tokenizer.advance()
+            
+    for inputfile in inputfiles:
+        outputfile =  '.'.join(inputfile.split('.')[:-1]) + '.xml'
+        compilation_engine = CompilationEngine(inputfile, outputfile)
+        compilation_engine.compileClass()
     
 if __name__ == '__main__':
     main()
