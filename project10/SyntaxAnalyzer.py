@@ -8,7 +8,6 @@ Created on Sun Oct 29 18:53:46 2017
 import sys
 import enum
 import os
-import time
 
 class TokenType(enum.Enum):
     KEYWORD = 1
@@ -54,7 +53,8 @@ class Tokenizer(object):
         self.output = None       
         if output_filename:
             self.output = open(output_filename, 'w')
-            self.output.write('<tokens>\n')
+            self.output.write(xmlLabel('tokens'))
+            self.output.write('\n')
         self.readline()
         self.advance()
         
@@ -66,7 +66,7 @@ class Tokenizer(object):
         if not line:
             self.input.close()
             if self.output: 
-                self.output.write('</tokens>')
+                self.output.write(xmlLabel('tokens', True))
                 self.output.close()          
         return line
     
@@ -74,6 +74,7 @@ class Tokenizer(object):
         self.current_line = self.readinputline()
         while self.current_line:
             # comment in /** */
+            self.current_line = self.current_line.lstrip()
             if self.current_line.startswith('/**'):
                 while '*/' not in self.current_line:
                     self.current_line = self.readinputline()
@@ -123,12 +124,12 @@ class Tokenizer(object):
         
         if self.output:
             label = TOKENTYPE_FORMAT[self.current_type]
-            self.output.write(xmlLabel(label))
+            self.output.write(xmlLabel(label)+' ')
             if self.current_token in SPEICAL_XML_CHAR:
                 self.output.write(SPEICAL_XML_CHAR[self.current_token])
             else:
                 self.output.write(self.current_token)
-            self.output.write(xmlLabel(label,True))
+            self.output.write(' '+xmlLabel(label,True))
             self.output.write('\n')
         
         self.current_line = line[token_len:].lstrip()
