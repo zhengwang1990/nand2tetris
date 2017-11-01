@@ -26,6 +26,7 @@ SPEICAL_XML_CHAR = {'<': '&lt;',
                     '>': '&gt;',
                     '"': '&quot;',
                     '&': '&amp;'}
+
                     
 def xmlLabel(value, is_end=False, indent=0):
     if is_end:
@@ -33,6 +34,7 @@ def xmlLabel(value, is_end=False, indent=0):
     else:
         prefix = '<'
     return ' '*indent + prefix + value + '>'
+
     
 class Tokenizer(object):
     
@@ -73,20 +75,18 @@ class Tokenizer(object):
     def readline(self):        
         self.current_line = self.readinputline()
         while self.current_line:
+            self.current_line = self.current_line.strip()
             # comment in /** */
-            self.current_line = self.current_line.lstrip()
+            # assumes /** always at the beginning of a line
+            # and */ always at the end of a line
             if self.current_line.startswith('/**'):
-                while '*/' not in self.current_line:
-                    self.current_line = self.readinputline()
-                pos = self.current_line.find('*/')
-                self.current_line = self.current_line[pos+2:].strip()
-                if not self.current_line:
-                    self.current_line = self.readinputline()
+                while not self.current_line.endswith('*/'):
+                    self.current_line = self.readinputline().strip()
+                self.current_line = self.readinputline().strip()
                 # continue to check /** */ patten
                 continue
             # comment start with //
-            self.current_line = self.current_line.split('//')[0]
-            self.current_line = self.current_line.strip()
+            self.current_line = self.current_line.split('//')[0].strip()
             if not self.current_line:  # empty line
                 self.current_line = self.readinputline()
             else:  # non-empty line
@@ -97,7 +97,7 @@ class Tokenizer(object):
             return ('0' <= c <= '9' or 'a' <= c <= 'z' or 'A' <= c <= 'Z' or 
                     c == '_')
                     
-        line = self.current_line  # alias copy
+        line = self.current_line  # alias copy       
         token_len = 1
         if '0' <= line[0] <= '9':  # integer constant            
             while token_len < len(line) and '0' <= line[token_len] <= '9':
@@ -146,6 +146,13 @@ class Tokenizer(object):
         return TOKENTYPE_FORMAT[self.current_type]
 
 class CompilationEngine(object):
+    
+    KEYWORD_CONSTANTS = ['true', 'false', 'null', 'this']
+    
+    OP = ['+', '-', '*', '/', '&', '|', '<', '>', '=']
+    
+    UNARY_OP = ['-', '~']
+    
     def __init__(self, input_filename, output_filename):
         self.tokenizer = Tokenizer(input_filename)
         self.output = open(output_filename, 'w')
@@ -162,8 +169,19 @@ class CompilationEngine(object):
     
     def writeToken(self, tokenType=None):
         tokenType = tokenType or self.tokenizer.tokenTypeStr()
-        self.writeln(tokenType, self.tokenizer.currentToken())       
-        self.tokenizer.advance()
+        tokenValue = self.tokenizer.currentToken()
+        if tokenValue in SPEICAL_XML_CHAR:
+            tokenValue = SPEICAL_XML_CHAR[tokenValue]
+        self.writeln(tokenType, tokenValue)     
+        if self.tokenizer.hasMoreTokens():
+            self.tokenizer.advance()
+    
+    def writeBracketSyntax(self, func):
+        # '(' or '[' or '{'
+        self.writeToken()
+        func()
+        # ')' or ']' or '}'
+        self.writeToken()
         
     def compileClass(self):
         if self.tokenizer.currentToken() != 'class':
@@ -175,17 +193,34 @@ class CompilationEngine(object):
         for _ in range(3):
             self.writeToken()
         # variable dec
-        self.compileClassVarDec()
+        while self.compileClassVarDec():
+            pass
         # subroutines
         while self.compileSubroutineDec():
             pass
+        # '}'
+        self.writeToken()
         self.indent -= 2
-        self.writeln('class', is_end=False)
-        
+        self.writeln('class', is_end=True)
         return True
         
     def compileClassVarDec(self):
-        pass
+        if self.tokenizer.currentToken() not in ['static', 'field']:
+            return False
+        self.writeln('classVarDec', is_end=False)
+        self.indent += 2
+        for _ in range(2):
+            self.writeToken()
+        while self.tokenizer.tokenType() == TokenType.IDENTIFIER:
+            # varName
+            self.writeToken()
+            if self.tokenizer.currentToken() == ',':
+                self.writeToken()
+        # ';'
+        self.writeToken()
+        self.indent -= 2
+        self.writeln('subroutineDec', is_end=True)
+        
     
     def compileSubroutineDec(self):
         if self.tokenizer.currentToken() not in ['constructor', 'function',
@@ -194,12 +229,10 @@ class CompilationEngine(object):
         
         self.writeln('subroutineDec', is_end=False)
         self.indent += 2
-        # subroutine type, return type, subroutine name, '('
-        for _ in range(4):
+        # subroutine type, return type, subroutine name        
+        for _ in range(3):
             self.writeToken()
-        self.compileParameterList()
-        # ')'
-        self.writeToken()
+        self.writeBracketSyntax(self.compileParameterList)
         self.compileSubroutineBody()
         self.indent -= 2
         self.writeln('subroutineDec', is_end=True)
@@ -229,18 +262,20 @@ class CompilationEngine(object):
         self.compileStatements()
         self.indent -= 2
         self.writeln('subroutineBody', is_end=True)
+        # '}'
+        self.writeToken()
         return True
 
     def compileVarDec(self):
         if self.tokenizer.currentToken() != 'var':
-            return False
-        
+            return False       
         self.writeln('varDec', is_end=False)
         self.indent += 2
-        # var
-        self.writeToken()
-        while (self.tokenizer.tokenType() == TokenType.IDENTIFIER or 
-               self.tokenizer.tokenType() == TokenType.KEYWORD):
+        # var, type
+        for _ in range(2):
+            self.writeToken()
+        while self.tokenizer.tokenType() == TokenType.IDENTIFIER:
+            # varName
             self.writeToken()
             if self.tokenizer.currentToken() == ',':
                 self.writeToken()
@@ -253,7 +288,11 @@ class CompilationEngine(object):
     def compileStatements(self):
         self.writeln('statements', is_end=False)
         self.indent += 2
-        while (self.compileLet()):
+        while (self.compileLet() or
+               self.compileWhile() or
+               self.compileIf() or
+               self.compileDo() or
+               self.compileReturn()):
             pass
         self.indent -= 2
         self.writeln('statements', is_end=True)
@@ -261,14 +300,148 @@ class CompilationEngine(object):
     
     def compileLet(self):
         if self.tokenizer.currentToken() != 'let':
-            return False
+            return False        
+        self.writeln('letStatement', is_end=False)
+        self.indent += 2
         # let, var
         for _ in range(2):
             self.writeToken()
         if self.tokenizer.currentToken() == '[':
-            raise NotImplemented('Expression')
+            self.writeBracketSyntax(self.compileExpression)           
         # '='
         self.writeToken()
+        self.compileExpression()
+        # ';'
+        self.writeToken()       
+        self.indent -= 2
+        self.writeln('letStatement', is_end=True)
+        return True
+    
+    def compileWhile(self):
+        if self.tokenizer.currentToken() != 'while':
+            return False
+        self.writeln('whileStatement', is_end=False)
+        self.indent += 2
+        # while
+        self.writeToken()
+        self.writeBracketSyntax(self.compileExpression)
+        self.writeBracketSyntax(self.compileStatements)
+        self.indent -= 2
+        self.writeln('whileStatement', is_end=True)
+        return True
+        
+    def compileIf(self):
+        if self.tokenizer.currentToken() != 'if':
+            return False
+        self.writeln('ifStatement', is_end=False)
+        self.indent += 2
+        # if
+        self.writeToken()
+        self.writeBracketSyntax(self.compileExpression)
+        self.writeBracketSyntax(self.compileStatements)
+        if self.tokenizer.currentToken() == 'else':
+            # else
+            self.writeToken()
+            self.writeBracketSyntax(self.compileStatements)
+        self.indent -= 2
+        self.writeln('ifStatement', is_end=True)
+        return True
+
+    def compileDo(self):
+        if self.tokenizer.currentToken() != 'do':
+            return False
+        self.writeln('doStatement', is_end=False)
+        self.indent += 2
+        # do, subroutine name | className | varName
+        for _ in range(2):
+            self.writeToken()
+        if self.tokenizer.currentToken() == '(':
+            self.writeBracketSyntax(self.compileExpressionList)
+        elif self.tokenizer.currentToken() == '.':
+            # '.', subroutineName
+            for _ in range(2):
+                self.writeToken()
+            self.writeBracketSyntax(self.compileExpressionList)
+        # ';'
+        self.writeToken()
+        self.indent -= 2
+        self.writeln('doStatement', is_end=True)
+        return True
+    
+    def compileReturn(self):
+        if self.tokenizer.currentToken() != 'return':
+            return False
+        self.writeln('returnStatement', is_end=False)
+        self.indent += 2
+        # return
+        self.writeToken()
+        self.compileExpression()
+        # ';'
+        self.writeToken()
+        self.indent -= 2
+        self.writeln('returnStatement', is_end=True)
+        return True
+        
+    def compileExpressionList(self):
+        self.writeln('expressionList', is_end=False)
+        self.indent += 2
+        if self.compileExpression():
+            while self.tokenizer.currentToken() == ',':
+                self.compileExpression()
+        self.indent -= 2
+        self.writeln('expressionList', is_end=True)
+        return True
+    
+    def isTerm(self):
+        return (self.tokenizer.tokenType() == TokenType.INTEGER or
+                self.tokenizer.tokenType() == TokenType.STRING or
+                self.tokenizer.tokenType() == TokenType.IDENTIFIER or
+                self.tokenizer.currentToken() in self.KEYWORD_CONSTANTS or
+                self.tokenizer.currentToken() == '(' or
+                self.tokenizer.currentToken() in self.UNARY_OP)
+    
+    def compileExpression(self):
+        if not self.isTerm():
+            return False
+        self.writeln('expression', is_end=False)
+        self.indent += 2
+        self.compileTerm()
+        while self.tokenizer.currentToken() in self.OP:
+            self.writeToken()
+            self.compileTerm()
+        self.indent -= 2
+        self.writeln('expression', is_end=True)
+        return True        
+        
+    def compileTerm(self):
+        if not self.isTerm():
+            return False
+        self.writeln('term', is_end=False)
+        self.indent += 2
+        if (self.tokenizer.tokenType() == TokenType.INTEGER or
+            self.tokenizer.tokenType() == TokenType.STRING or
+            self.tokenizer.currentToken() in self.KEYWORD_CONSTANTS):
+            self.writeToken()
+        elif self.tokenizer.tokenType() == TokenType.IDENTIFIER:
+            self.writeToken()
+            if self.tokenizer.currentToken() == '[':
+                self.writeBracketSyntax(self.compileExpression)
+            elif self.tokenizer.currentToken() == '(':
+                self.writeBracketSyntax(self.compileExpressionList)
+            elif self.tokenizer.currentToken() == '.':
+                # '.', subroutineName
+                for _ in range(2):
+                    self.writeToken()
+                self.writeBracketSyntax(self.compileExpressionList)
+        elif self.tokenizer.currentToken() == '(':
+            self.writeBracketSyntax(self.compileExpression)                             
+        elif self.tokenizer.currentToken() in self.UNARY_OP:
+            self.writeToken()
+            self.writeTerm()
+        self.indent -= 2
+        self.writeln('term', is_end=True)
+        return True
+
     
 def ListJackFile(path):
     ret = []
@@ -280,6 +453,7 @@ def ListJackFile(path):
         for file in files:
             ret.extend(ListJackFile(file))
     return ret
+
 
 def main():
     if len(sys.argv) < 2:
@@ -299,6 +473,7 @@ def main():
         outputfile =  '.'.join(inputfile.split('.')[:-1]) + '.xml'
         compilation_engine = CompilationEngine(inputfile, outputfile)
         compilation_engine.compileClass()
+
     
 if __name__ == '__main__':
     main()
