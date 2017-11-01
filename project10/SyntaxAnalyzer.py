@@ -185,8 +185,7 @@ class CompilationEngine(object):
         
     def compileClass(self):
         if self.tokenizer.currentToken() != 'class':
-            return False
-        
+            return False       
         self.writeln('class', is_end=False)
         self.indent += 2
         # class keyword, class name, '{'
@@ -220,13 +219,12 @@ class CompilationEngine(object):
         self.writeToken()
         self.indent -= 2
         self.writeln('subroutineDec', is_end=True)
-        
+        return True       
     
     def compileSubroutineDec(self):
         if self.tokenizer.currentToken() not in ['constructor', 'function',
                                                  'method']:
-            return False
-        
+            return False        
         self.writeln('subroutineDec', is_end=False)
         self.indent += 2
         # subroutine type, return type, subroutine name        
@@ -235,8 +233,7 @@ class CompilationEngine(object):
         self.writeBracketSyntax(self.compileParameterList)
         self.compileSubroutineBody()
         self.indent -= 2
-        self.writeln('subroutineDec', is_end=True)
-        
+        self.writeln('subroutineDec', is_end=True)        
         return True    
         
     def compileParameterList(self):
