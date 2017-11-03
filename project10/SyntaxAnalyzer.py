@@ -72,7 +72,7 @@ class Tokenizer(object):
                 self.output.close()          
         return line
     
-    def readline(self):        
+    def readline(self):
         self.current_line = self.readinputline()
         while self.current_line:
             self.current_line = self.current_line.strip()
@@ -82,7 +82,7 @@ class Tokenizer(object):
             if self.current_line.startswith('/**'):
                 while not self.current_line.endswith('*/'):
                     self.current_line = self.readinputline().strip()
-                self.current_line = self.readinputline().strip()
+                self.current_line = self.readinputline()
                 # continue to check /** */ patten
                 continue
             # comment start with //
@@ -97,7 +97,7 @@ class Tokenizer(object):
             return ('0' <= c <= '9' or 'a' <= c <= 'z' or 'A' <= c <= 'Z' or 
                     c == '_')
                     
-        line = self.current_line  # alias copy       
+        line = self.current_line  # alias copy
         token_len = 1
         if '0' <= line[0] <= '9':  # integer constant            
             while token_len < len(line) and '0' <= line[token_len] <= '9':
@@ -218,7 +218,7 @@ class CompilationEngine(object):
         # ';'
         self.writeToken()
         self.indent -= 2
-        self.writeln('subroutineDec', is_end=True)
+        self.writeln('classVarDec', is_end=True)
         return True       
     
     def compileSubroutineDec(self):
@@ -257,10 +257,10 @@ class CompilationEngine(object):
         while self.compileVarDec():
             pass
         self.compileStatements()
-        self.indent -= 2
-        self.writeln('subroutineBody', is_end=True)
         # '}'
         self.writeToken()
+        self.indent -= 2
+        self.writeln('subroutineBody', is_end=True)
         return True
 
     def compileVarDec(self):
@@ -384,6 +384,8 @@ class CompilationEngine(object):
         self.indent += 2
         if self.compileExpression():
             while self.tokenizer.currentToken() == ',':
+                # ','
+                self.writeToken()
                 self.compileExpression()
         self.indent -= 2
         self.writeln('expressionList', is_end=True)
@@ -434,7 +436,7 @@ class CompilationEngine(object):
             self.writeBracketSyntax(self.compileExpression)                             
         elif self.tokenizer.currentToken() in self.UNARY_OP:
             self.writeToken()
-            self.writeTerm()
+            self.compileTerm()
         self.indent -= 2
         self.writeln('term', is_end=True)
         return True
