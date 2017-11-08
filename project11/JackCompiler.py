@@ -478,14 +478,16 @@ class CompilationEngine(object):
             attr = KEYWORD_CONSTANTS_TABLE[self.tokenizer.advance()]
             self.vm_writer.writePush(attr[0], attr[1])
         elif self.tokenizer.tokenType() == TokenType.STRING:
-            self.writeToken()
-            #raise
+            self.vm_writer.writePush('constant', 0)
+            self.vm_writer.writeCall('String.new', 1)
+            for c in self.tokenizer.advance():
+                self.vm_writer.writePush('constant', ord(c))
+                self.vm_writer.writeCall('String.appendChar', 2)
         elif self.tokenizer.tokenType() == TokenType.IDENTIFIER:
             first_name = self.tokenizer.advance()
             if self.tokenizer.currentToken() == '[':
+                raise
                 self.compileBracketSyntax(self.compileExpression)
-            #elif self.tokenizer.currentToken() == '(':
-            #    self.compileBracketSyntax(self.compileExpressionList)
             elif self.tokenizer.currentToken() in ['.', '(']:
                 self.compileSubroutineCall(first_name)
             else:  # variable
