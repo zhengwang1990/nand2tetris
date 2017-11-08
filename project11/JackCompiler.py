@@ -329,20 +329,20 @@ class CompilationEngine(object):
     def compileLet(self):
         if self.tokenizer.currentToken() != 'let':
             return False
-        #lhs_array = False
+        lhs_array = False
         # let
         self.tokenizer.advance()
         lhs = self.tokenizer.advance()
         if self.tokenizer.currentToken() == '[':
             self.vm_writer.writePush(self.symbol_table.KindOf(lhs),
                                      self.symbol_table.IndexOf(lhs))
-            #lhs_array = True
+            lhs_array = True
             self.compileBracketSyntax(self.compileExpression)
             self.vm_writer.writeArithmetic('add')
         # '='
         self.tokenizer.advance()
         self.compileExpression()
-        if self.symbol_table.TypeOf(lhs) == 'Array':
+        if lhs_array:
             self.vm_writer.writePop('temp', 0)
             self.vm_writer.writePop('pointer', 1)
             self.vm_writer.writePush('temp', 0)
