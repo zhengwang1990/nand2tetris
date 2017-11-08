@@ -334,14 +334,19 @@ class CompilationEngine(object):
         self.tokenizer.advance()
         lhs = self.tokenizer.advance()
         if self.tokenizer.currentToken() == '[':
-            raise
+            self.vm_writer.writePush(self.symbol_table.KindOf(lhs),
+                                     self.symbol_table.IndexOf(lhs))
             #lhs_array = True
-            self.compileBracketSyntax(self.compileExpression)          
+            self.compileBracketSyntax(self.compileExpression)
+            self.vm_writer.writeArithmetic('add')
         # '='
         self.tokenizer.advance()
         self.compileExpression()
         if self.symbol_table.TypeOf(lhs) == 'Array':
-            raise
+            self.vm_writer.writePop('temp', 0)
+            self.vm_writer.writePop('pointer', 1)
+            self.vm_writer.writePush('temp', 0)
+            self.vm_writer.writePop('that', 0)
         else:
             self.vm_writer.writePop(self.symbol_table.KindOf(lhs),
                                     self.symbol_table.IndexOf(lhs))
@@ -470,38 +475,38 @@ class CompilationEngine(object):
     def compileTerm(self):
         if not self.isTerm():
             return False
-        self.writeln('term', is_end=False)
-        self.indent += 2
         if self.tokenizer.tokenType() == TokenType.INTEGER:
             self.vm_writer.writePush('constant', self.tokenizer.advance())
         elif self.tokenizer.currentToken() in KEYWORD_CONSTANTS_TABLE:
             attr = KEYWORD_CONSTANTS_TABLE[self.tokenizer.advance()]
             self.vm_writer.writePush(attr[0], attr[1])
         elif self.tokenizer.tokenType() == TokenType.STRING:
-            self.vm_writer.writePush('constant', 0)
+            str_val = self.tokenizer.advance()
+            self.vm_writer.writePush('constant', len(str_val))
             self.vm_writer.writeCall('String.new', 1)
-            for c in self.tokenizer.advance():
+            for c in str_val:
                 self.vm_writer.writePush('constant', ord(c))
                 self.vm_writer.writeCall('String.appendChar', 2)
         elif self.tokenizer.tokenType() == TokenType.IDENTIFIER:
             first_name = self.tokenizer.advance()
             if self.tokenizer.currentToken() == '[':
-                raise
+                self.vm_writer.writePush(self.symbol_table.KindOf(first_name),
+                                         self.symbol_table.IndexOf(first_name))
                 self.compileBracketSyntax(self.compileExpression)
+                self.vm_writer.writeArithmetic('add')
+                self.vm_writer.writePop('pointer', 1)
+                self.vm_writer.writePush('that', 0)
             elif self.tokenizer.currentToken() in ['.', '(']:
                 self.compileSubroutineCall(first_name)
             else:  # variable
                 self.vm_writer.writePush(self.symbol_table.KindOf(first_name),
-                                         self.symbol_table.IndexOf(first_name))
-                
+                                         self.symbol_table.IndexOf(first_name))                
         elif self.tokenizer.currentToken() == '(':
             self.compileBracketSyntax(self.compileExpression)                             
         elif self.tokenizer.currentToken() in UNARY_OP_TABLE:
             op = self.tokenizer.advance()
             self.compileTerm()
             self.vm_writer.writeArithmetic(UNARY_OP_TABLE[op])
-        self.indent -= 2
-        self.writeln('term', is_end=True)
         return True
 
 
