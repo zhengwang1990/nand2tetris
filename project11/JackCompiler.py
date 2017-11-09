@@ -93,11 +93,8 @@ class Tokenizer(object):
     
     def readinputline(self):
         line = self.input.readline()
-        if not line:
-            self.input.close()
-            if self.output: 
-                self.output.write(xmlLabel('tokens', True))
-                self.output.close()          
+        if not line and self.output:
+            self.output.write(xmlLabel('tokens', True))         
         return line
     
     def readline(self):
@@ -173,6 +170,11 @@ class Tokenizer(object):
     
     def tokenTypeStr(self):
         return TOKENTYPE_FORMAT[self.current_type]
+    
+    def __del__(self):
+        self.input.close()
+        if self.output:
+            self.output.close()
 
 class CompilationEngine(object):
     
@@ -182,29 +184,10 @@ class CompilationEngine(object):
     def __init__(self, input_filename, output_filename):
         self.tokenizer = Tokenizer(input_filename)
         self.symbol_table = SymbolTable()
-        self.vm_writer = VMWriter(output_filename[:-3]+'vm')
-        self.output = open(output_filename, 'w')
+        self.vm_writer = VMWriter(output_filename)
         self.if_count = 0
         self.while_count = 0
         self.indent = 0
-    
-    def writeln(self, label, value=None, is_end=False):
-        if value:
-            self.output.write(xmlLabel(label, False, self.indent)+' ')
-            self.output.write(value)
-            self.output.write(' '+xmlLabel(label, True, 0))
-        else:
-            self.output.write(xmlLabel(label, is_end, self.indent))
-        self.output.write('\n')
-    
-    def writeToken(self, tokenType=None):
-        tokenType = tokenType or self.tokenizer.tokenTypeStr()
-        tokenValue = self.tokenizer.currentToken()
-        if tokenValue in SPEICAL_XML_CHAR:
-            tokenValue = SPEICAL_XML_CHAR[tokenValue]
-        self.writeln(tokenType, tokenValue)     
-        if self.tokenizer.hasMoreTokens():
-            self.tokenizer.advance()
     
     def compileBracketSyntax(self, func):
         # '(' or '[' or '{'
@@ -592,6 +575,9 @@ class VMWriter(object):
     def writeGoto(self, label):
         self.output.write('goto %s\n'%label)
         
+    def __del__(self):
+        self.output.close()
+        
 def ListJackFile(path):
     ret = []
     if os.path.isfile(path):
@@ -613,7 +599,7 @@ def main():
     inputfiles = ListJackFile(inputpath)    
             
     for inputfile in inputfiles:
-        outputfile =  '.'.join(inputfile.split('.')[:-1]) + '.xml'
+        outputfile =  '.'.join(inputfile.split('.')[:-1]) + '.vm'
         compilation_engine = CompilationEngine(inputfile, outputfile)
         compilation_engine.compileClass()
 
