@@ -55,14 +55,6 @@ KEYWORD_CONSTANTS_TABLE = {'true': ('constant', -1),
                            'false': ('constant', 0), 
                            'null': ('constant', 0), 
                            'this': ('pointer', 0)}
-
-def xmlLabel(value, is_end=False, indent=0):
-    if is_end:
-        prefix = '</'
-    else:
-        prefix = '<'
-    return ' '*indent + prefix + value + '>'
-
     
 class Tokenizer(object):
     
@@ -74,31 +66,19 @@ class Tokenizer(object):
     SYMBOL_LIST = ['{', '}', '(', ')', '[', ']', '.', ',', ';', '+', '-', '*',
                    '/', '&', '|', '<', '>', '=', '~']
     
-    def __init__(self, input_filename, output_filename=None):
+    def __init__(self, input_filename):
         self.input = open(input_filename, 'r')
-        self.current_words = []
         self.current_token = None
         self.current_type = None
         self.current_line = None
-        self.output = None       
-        if output_filename:
-            self.output = open(output_filename, 'w')
-            self.output.write(xmlLabel('tokens'))
-            self.output.write('\n')
         self.readline()
         self.advance()
         
     def hasMoreTokens(self):
         return bool(self.current_line)
     
-    def readinputline(self):
-        line = self.input.readline()
-        if not line and self.output:
-            self.output.write(xmlLabel('tokens', True))         
-        return line
-    
     def readline(self):
-        self.current_line = self.readinputline()
+        self.current_line = self.input.readline() 
         while self.current_line:
             self.current_line = self.current_line.strip()
             # comment in /** */
@@ -106,14 +86,14 @@ class Tokenizer(object):
             # and */ always at the end of a line
             if self.current_line.startswith('/**'):
                 while not self.current_line.endswith('*/'):
-                    self.current_line = self.readinputline().strip()
-                self.current_line = self.readinputline()
+                    self.current_line = self.input.readline() .strip()
+                self.current_line = self.input.readline() 
                 # continue to check /** */ patten
                 continue
             # comment start with //
             self.current_line = self.current_line.split('//')[0].strip()
             if not self.current_line:  # empty line
-                self.current_line = self.readinputline()
+                self.current_line = self.input.readline() 
             else:  # non-empty line
                 break
     
@@ -145,17 +125,7 @@ class Tokenizer(object):
             if self.current_token in self.KEYWORD_LIST:
                 self.current_type = TokenType.KEYWORD
             else: 
-                self.current_type = TokenType.IDENTIFIER   
-        
-        if self.output:
-            label = self.tokenTypeStr()
-            self.output.write(xmlLabel(label)+' ')
-            if self.current_token in SPEICAL_XML_CHAR:
-                self.output.write(SPEICAL_XML_CHAR[self.current_token])
-            else:
-                self.output.write(self.current_token)
-            self.output.write(' '+xmlLabel(label,True))
-            self.output.write('\n')
+                self.current_type = TokenType.IDENTIFIER
         
         self.current_line = line[token_len:].lstrip()
         if not self.current_line:
@@ -173,8 +143,7 @@ class Tokenizer(object):
     
     def __del__(self):
         self.input.close()
-        if self.output:
-            self.output.close()
+        
 
 class CompilationEngine(object):
     
