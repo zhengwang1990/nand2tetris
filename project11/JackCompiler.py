@@ -9,29 +9,21 @@ import sys
 import enum
 import os
 
+
 class TokenType(enum.Enum):
     KEYWORD = 1
     SYMBOL = 2
     INTEGER = 3
     STRING = 4
     IDENTIFIER = 5
-    
+
+
 class VarKind(enum.Enum):
     STATIC = 1
     FIELD = 2
     ARG = 3
     VAR = 4
 
-TOKENTYPE_FORMAT = {TokenType.KEYWORD: 'keyword',
-                    TokenType.SYMBOL: 'symbol',
-                    TokenType.INTEGER: 'integerConstant',
-                    TokenType.STRING: 'stringConstant',
-                    TokenType.IDENTIFIER: 'identifier'}
-
-SPEICAL_XML_CHAR = {'<': '&lt;',
-                    '>': '&gt;',
-                    '"': '&quot;',
-                    '&': '&amp;'}
 
 SEGMENT_MAP = {VarKind.STATIC: 'static',
                VarKind.FIELD: 'this',
@@ -137,9 +129,6 @@ class Tokenizer(object):
     
     def tokenType(self):
         return self.current_type
-    
-    def tokenTypeStr(self):
-        return TOKENTYPE_FORMAT[self.current_type]
     
     def __del__(self):
         self.input.close()
@@ -546,7 +535,8 @@ class VMWriter(object):
         
     def __del__(self):
         self.output.close()
-        
+
+
 def ListJackFile(path):
     ret = []
     if os.path.isfile(path):
